@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stddef.h>
+#include <stdio.h>
 
 /**
  * Here you should specify which bonuses do you want via the
