@@ -81,6 +81,8 @@ if p.returncode != 0:
     print('Expected zero exit code')
     sys.exit(-1)
 if output_got != output_exp:
+    print(output_got)
+    print(output_exp)
     print('Tests output mismatch')
     if args.verbose:
             print('######## Expected:')
