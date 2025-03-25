@@ -1,6 +1,9 @@
 #pragma once
 
 #include <sys/types.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
 
 /**
  * User-defined in-memory filesystem. It is as simple as possible.

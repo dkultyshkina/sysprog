@@ -80,10 +80,8 @@ test_close(void)
 
 	unit_check(ufs_close(0) == -1, "close with seemingly normal fd");
 	unit_fail_if(ufs_errno() != UFS_ERR_NO_FILE);
-
 	unit_check(ufs_close(INT_MAX) == -1, "close with huge invalid fd");
 	unit_fail_if(ufs_errno() != UFS_ERR_NO_FILE);
-
 	int fd = ufs_open("file", UFS_CREATE);
 	unit_fail_if(fd == -1);
 	unit_check(ufs_close(fd) == 0, "close normal descriptor");
