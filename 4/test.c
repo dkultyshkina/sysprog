@@ -152,15 +152,15 @@ test_thread_pool_delete(void)
 	/*
 	 * Delete won't work while the pool has tasks.
 	 */
-	unit_fail_if(thread_pool_new(3, &p) != 0);
-	unit_fail_if(thread_task_new(&t, task_lock_unlock_f, &m) != 0);
+	 unit_fail_if(thread_pool_new(3, &p) != 0);
+	 unit_fail_if(thread_task_new(&t, task_lock_unlock_f, &m) != 0);
 
-	pthread_mutex_lock(&m);
-	unit_fail_if(thread_pool_push_task(p, t) != 0);
-	/* Give the task a chance to be picked up by a thread. */
+	 pthread_mutex_lock(&m);
+	 unit_fail_if(thread_pool_push_task(p, t) != 0);
+	 /* Give the task a chance to be picked up by a thread. */
 	usleep(1000);
-	unit_check(thread_pool_delete(p) == TPOOL_ERR_HAS_TASKS, "delete does "\
-		   "not work until there are not finished tasks");
+	unit_check(thread_pool_delete(p) == TPOOL_ERR_HAS_TASKS, "delete does " \
+	 	   "not work until there are not finished tasks");
 	pthread_mutex_unlock(&m);
 	unit_fail_if(thread_task_join(t, &result) != 0);
 	unit_fail_if(thread_task_delete(t) != 0);
