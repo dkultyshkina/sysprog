@@ -1,6 +1,6 @@
 GCC_FLAGS = -Wextra -Werror -Wall -Wno-gnu-folding-constant
 
-all: test
+all: clean test
 
 test:
 	gcc $(GCC_FLAGS) thread_pool.c test.c ../utils/unit.c -I ../utils -o test
