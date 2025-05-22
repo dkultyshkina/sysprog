@@ -59,14 +59,12 @@ static int execute_command_line(const struct command_line *line) {
       }
       exit(arg);
     } else {
-      if (!strcmp(iterator->cmd.exe, "exit")) {
-        int arg = 0;
-        if (iterator->cmd.arg_count != 0) {
-          arg = atoi(*iterator->cmd.args);
-        }
-        result = arg;
-      }
       if (i < number_commands - 1) {
+        if (pipe(fd) == -1) {
+          exit(1);
+        }
+      }
+      if (i < (number_commands - 1)) {
         if (pipe(fd) == -1) {
           exit(1);
         }
@@ -113,12 +111,24 @@ static int execute_command_line(const struct command_line *line) {
         if (i < number_commands - 1) {
           close(fd[0]);
         }
+
+        if (!strcmp(iterator->cmd.exe, "exit")) {
+          int arg = 0;
+          arg = atoi(*iterator->cmd.args);
+          exit(arg);
+        }
+
         char **args = calloc(iterator->cmd.arg_count + 2, sizeof(char *));
+        if (!args) {
+          exit(1);
+        }
         args[0] = iterator->cmd.exe;
         memcpy(args + 1, iterator->cmd.args,
                sizeof(char *) * iterator->cmd.arg_count);
         result = execvp(iterator->cmd.exe, args);
+
         if (result == -1) {
+          free(args);
           exit(1);
         }
       } else {
@@ -135,8 +145,14 @@ static int execute_command_line(const struct command_line *line) {
       iterator = iterator->next;
     }
   }
-  for (int i = 0; i < number_commands; i++) {
-    wait(NULL);
+  if (number_commands > 1) {
+    close(prev_pipe_read);
+  }
+  int status;
+  while (wait(&status) > 0) {
+    if (WIFEXITED(status)) {
+      result = WEXITSTATUS(status);
+    }
   }
   return result;
 }
