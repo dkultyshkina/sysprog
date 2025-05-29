@@ -84,14 +84,14 @@ static void wakeup_queue_suspend_this(struct wakeup_queue *queue,
     return;
   }
   coro_suspend();
-  if (rlist_empty(&entry.base) == false) {
+  if (!rlist_empty(&entry.base)) {
     rlist_del_entry(&entry, base);
   }
 }
 
 /** Wakeup the first coroutine in the queue. */
 void wakeup_queue_wakeup_first(struct wakeup_queue *queue) {
-  if (rlist_empty(&queue->coros) == true) {
+  if (rlist_empty(&queue->coros)) {
     return;
   }
   struct wakeup_entry *entry =
@@ -102,7 +102,7 @@ void wakeup_queue_wakeup_first(struct wakeup_queue *queue) {
 }
 
 static void wakeup_queue_wakeup_all(struct wakeup_queue *queue) {
-  while (rlist_empty(&queue->coros) == false) {
+  while (!rlist_empty(&queue->coros)) {
     struct wakeup_entry *entry =
         rlist_first_entry(&queue->coros, struct wakeup_entry, base);
     if (entry != NULL) {
@@ -144,6 +144,7 @@ void free_channel(struct coro_bus_channel *channel) {
     channel->closed_flag = true;
     wakeup_queue_wakeup_all(&channel->send_queue);
     wakeup_queue_wakeup_all(&channel->recv_queue);
+    coro_yield();
     free(channel->data.data);
     free(channel);
   }
@@ -173,7 +174,10 @@ void coro_bus_delete(struct coro_bus *bus) {
     return;
   }
   for (size_t i = 0; i < bus->channel_capacity; i++) {
-    free_channel(bus->channels[i]);
+    if (bus->channels[i] != NULL) {
+      free_channel(bus->channels[i]);
+      bus->channels[i] = NULL;
+    }
   }
   free(bus->channels);
   free(bus);
@@ -208,8 +212,17 @@ int take_description(struct coro_bus *bus, size_t size_limit) {
   }
 
   if (description == -1) {
-    realloc_memory_channel(bus);
+    if (realloc_memory_channel(bus) != 0) {
+      return -1;
+    }
     description = bus->channel_capacity;
+  }
+
+  for (size_t i = 0; i < bus->channel_capacity; i++) {
+    if (bus->channels[i] == NULL) {
+      description = i;
+      break;
+    }
   }
 
   struct coro_bus_channel *new_bus_channel =
@@ -235,7 +248,7 @@ int take_description(struct coro_bus *bus, size_t size_limit) {
 }
 
 int coro_bus_channel_open(struct coro_bus *bus, size_t size_limit) {
-  if (bus == false || size_limit <= 0) {
+  if (bus == NULL || size_limit <= 0) {
     coro_bus_errno_set(CORO_BUS_ERR_NOT_IMPLEMENTED);
     return -1;
   }
