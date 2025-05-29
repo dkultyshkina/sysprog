@@ -44,6 +44,9 @@ static int execute_command_line(const struct command_line *line) {
   struct expr *iterator = line->head;
   int fd[2];
   int prev_pipe_read = STDIN_FILENO;
+  bool exit_command = false;
+  int exit_code = 0;
+
   for (int i = 0; (i < number_commands) && (iterator != NULL); i++) {
     if (iterator->type != EXPR_TYPE_COMMAND) {
       iterator = iterator->next;
@@ -64,81 +67,78 @@ static int execute_command_line(const struct command_line *line) {
           exit(1);
         }
       }
-      if (i < (number_commands - 1)) {
-        if (pipe(fd) == -1) {
-          exit(1);
-        }
-      }
       pid_t pid = fork();
       if (pid == -1) {
         exit(1);
       } else if (pid == 0) {
         if (i > 0) {
           if (dup2(prev_pipe_read, STDIN_FILENO) == -1) {
-            exit(1);
+            _exit(1);
           }
           close(prev_pipe_read);
         }
         if (i < (number_commands - 1)) {
           if (dup2(fd[1], STDOUT_FILENO) == -1) {
-            exit(1);
+            _exit(1);
           }
           close(fd[1]);
         }
-        if (line->out_type == OUTPUT_TYPE_FILE_NEW &&
-            (i == (number_commands - 1))) {
-          fd[1] = open(line->out_file, O_TRUNC | O_CREAT | O_WRONLY, 0644);
-          if (fd[1] == -1) {
-            exit(1);
+
+        if ((i == (number_commands - 1))) {
+          int outfile_fd = -1;
+          if (line->out_type == OUTPUT_TYPE_FILE_NEW) {
+            outfile_fd =
+                open(line->out_file, O_TRUNC | O_CREAT | O_WRONLY, 0644);
+          } else if (line->out_type == OUTPUT_TYPE_FILE_APPEND) {
+            outfile_fd =
+                open(line->out_file, O_APPEND | O_CREAT | O_WRONLY, 0644);
           }
-          if (dup2(fd[1], STDOUT_FILENO) == -1) {
-            exit(1);
+
+          if (outfile_fd != -1) {
+            if (dup2(outfile_fd, STDOUT_FILENO) == -1) {
+              _exit(1);
+            }
+            close(outfile_fd);
           }
-          close(fd[1]);
-        } else if (line->out_type == OUTPUT_TYPE_FILE_APPEND) {
-          fd[1] = open(line->out_file, O_APPEND | O_CREAT | O_WRONLY, 0644);
-          if (fd[1] == -1) {
-            exit(1);
-          }
-          if (dup2(fd[1], STDOUT_FILENO) == -1) {
-            exit(1);
-          }
-          close(fd[1]);
         }
-        if (i > 0) {
-          close(prev_pipe_read);
-        }
+
         if (i < number_commands - 1) {
           close(fd[0]);
         }
 
         if (!strcmp(iterator->cmd.exe, "exit")) {
           int arg = 0;
-          arg = atoi(*iterator->cmd.args);
-          exit(arg);
+          if (iterator->cmd.arg_count != 0) {
+            arg = atoi(*iterator->cmd.args);
+          }
+          _exit(arg);
         }
 
         char **args = calloc(iterator->cmd.arg_count + 2, sizeof(char *));
         if (!args) {
-          exit(1);
+          perror("calloc args failed");
+          _exit(1);
         }
         args[0] = iterator->cmd.exe;
         memcpy(args + 1, iterator->cmd.args,
                sizeof(char *) * iterator->cmd.arg_count);
-        result = execvp(iterator->cmd.exe, args);
+        args[iterator->cmd.arg_count + 1] = NULL;
 
-        if (result == -1) {
-          free(args);
-          exit(1);
-        }
+        execvp(iterator->cmd.exe, args);
+        free(args);
+        _exit(1);
       } else {
+        if (!strcmp(iterator->cmd.exe, "exit")) {
+          exit_command = true;
+          if (iterator->cmd.arg_count != 0) {
+            exit_code = atoi(*iterator->cmd.args);
+          }
+        }
         if (i > 0) {
           close(prev_pipe_read);
         }
         if (i < (number_commands - 1)) {
           close(fd[1]);
-        }
-        if (i < (number_commands - 1)) {
           prev_pipe_read = fd[0];
         }
       }
@@ -149,10 +149,13 @@ static int execute_command_line(const struct command_line *line) {
     close(prev_pipe_read);
   }
   int status;
-  while (wait(&status) > 0) {
+  while ((wait(&status)) > 0) {
     if (WIFEXITED(status)) {
       result = WEXITSTATUS(status);
     }
+  }
+  if (exit_command) {
+    return exit_code;
   }
   return result;
 }
