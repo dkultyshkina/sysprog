@@ -84,7 +84,7 @@ static int execute_command_line(const struct command_line *line) {
           close(fd[1]);
         }
 
-        if ((i == (number_commands - 1))) {
+        if (i == (number_commands - 1)) {
           int outfile_fd = -1;
           if (line->out_type == OUTPUT_TYPE_FILE_NEW) {
             outfile_fd =
