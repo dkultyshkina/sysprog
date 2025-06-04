@@ -16,7 +16,7 @@
  * It is important to define these macros here, in the header, because it is
  * used by tests.
  */
-#define NEED_DETACH 1
+#define NEED_DETACH 0
 #define NEED_TIMED_JOIN 1
 
 struct thread_pool;
@@ -26,7 +26,7 @@ typedef void *(*thread_task_f)(void *);
 
 enum {
   TPOOL_MAX_THREADS = 20,
-  TPOOL_MAX_TASKS = 100000,
+  TPOOL_MAX_TASKS = 1000,
 };
 
 enum thread_poool_errcode {
@@ -166,3 +166,4 @@ int thread_task_delete(struct thread_task *task);
 int thread_task_detach(struct thread_task *task);
 
 #endif
+

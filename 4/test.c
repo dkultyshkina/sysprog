@@ -129,7 +129,6 @@ static void *task_lock_unlock_f(void *arg) {
 
 static void test_thread_pool_delete(void) {
   unit_test_start();
-
   void *result;
   struct thread_pool *p;
   struct thread_task *t;
@@ -140,11 +139,11 @@ static void test_thread_pool_delete(void) {
    */
   unit_fail_if(thread_pool_new(3, &p) != 0);
   unit_fail_if(thread_task_new(&t, task_lock_unlock_f, &m) != 0);
-
   pthread_mutex_lock(&m);
   unit_fail_if(thread_pool_push_task(p, t) != 0);
   /* Give the task a chance to be picked up by a thread. */
   usleep(1000);
+  // pthread_mutex_unlock(&m);
   unit_check(thread_pool_delete(p) == TPOOL_ERR_HAS_TASKS,
              "delete does "
              "not work until there are not finished tasks");
