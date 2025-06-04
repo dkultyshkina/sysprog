@@ -31,11 +31,13 @@ struct chat_peer {
   size_t out_size;
   size_t out_capacity;
   struct peer_data *p_data;
+  bool is_closed;
 };
 
 struct chat_server {
   int socket;
   int epoll_fd;
+  struct peer_data *listener_pd;
   struct chat_peer *peers[1024];
   size_t peer_count;
   struct chat_message *messages;

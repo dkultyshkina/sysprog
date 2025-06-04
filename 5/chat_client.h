@@ -17,6 +17,7 @@ struct client_data {
   struct chat_client *client;
   uint32_t current_events;
 };
+
 struct chat_client {
   int socket;
   int epoll_fd;
@@ -33,6 +34,8 @@ struct chat_client {
   char *partial_buffer;
   size_t partial_size;
   size_t partial_capacity;
+
+  bool is_closed;
 };
 
 /**
