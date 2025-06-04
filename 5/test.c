@@ -45,8 +45,7 @@ static void test_msg_clear_id(struct test_msg *msg) {
   memset(msg->data, '0', TEST_MSG_ID_LEN);
 }
 
-static void test_msg_check_data(const struct test_msg *msg, const char *data)
-{
+static void test_msg_check_data(const struct test_msg *msg, const char *data) {
   uint32_t len = strlen(data);
   unit_fail_if(len != msg->len);
   unit_fail_if(len < TEST_MSG_ID_LEN);
@@ -148,7 +147,7 @@ static void test_basic(void) {
   unit_check(server_get_port(s) > 0, "has port");
   unit_check(chat_server_get_events(s) != 0, "has events");
   chat_server_delete(s);
-  
+
   // Delete the client right away.
   //
   struct chat_client *c1 = chat_client_new("c1");
@@ -341,8 +340,7 @@ static void test_multi_client(void) {
   for (int mi = 0; mi < msg_count; ++mi) {
     for (int ci = 0; ci < client_count; ++ci) {
       test_msg_set_id(test_msg, ci, mi);
-      unit_fail_if(chat_client_feed(clis[ci], test_msg->data, test_msg->size)
-      !=
+      unit_fail_if(chat_client_feed(clis[ci], test_msg->data, test_msg->size) !=
                    0);
       chat_client_update(clis[ci], 0);
     }

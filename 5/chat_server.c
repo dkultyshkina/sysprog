@@ -133,10 +133,8 @@ void chat_server_delete(struct chat_server *server) {
   if (server->socket >= 0) {
     close(server->socket);
   }
-  if (server->peers) {
-    for (size_t i = 0; i < server->peer_count; i++) {
-      free_peer(server->peers[i]);
-    }
+  for (size_t i = 0; i < server->peer_count; i++) {
+    free_peer(server->peers[i]);
   }
   if (server->messages) {
     for (size_t i = 0; i < server->msg_count; i++) {
