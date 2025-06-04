@@ -3,7 +3,7 @@
 #include <stddef.h>
 
 enum {
-  BLOCK_SIZE = 512,
+  BLOCK_SIZE = 4096,
   MAX_FILE_SIZE = 1024 * 1024 * 100,
 };
 
