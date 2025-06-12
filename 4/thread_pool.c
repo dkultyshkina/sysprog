@@ -340,7 +340,6 @@ int thread_task_delete(struct thread_task *task) {
     pthread_mutex_unlock(&task->mutex);
     return TPOOL_ERR_TASK_IN_POOL;
   }
-
   if (is_detached == true && status == FINISHED) {
     return TPOOL_ERR_INVALID_ARGUMENT;
   }
@@ -352,18 +351,12 @@ int thread_task_delete(struct thread_task *task) {
 
 #if NEED_DETACH
 
-int thread_task_detach(struct thread_task *task) {
-  if (task == NULL) {
-    return TPOOL_ERR_INVALID_ARGUMENT;
-  }
-  pthread_mutex_lock(&task->mutex);
-  if (task->status_task == NEW || task->pool == NULL) {
-    pthread_mutex_unlock(&task->mutex);
-    return TPOOL_ERR_TASK_NOT_PUSHED;
-  }
-  task->detach = true;
-  pthread_mutex_unlock(&task->mutex);
-  return 0;
+int
+thread_task_detach(struct thread_task *task)
+{
+	/* IMPLEMENT THIS FUNCTION */
+	(void)task;
+	return TPOOL_ERR_NOT_IMPLEMENTED;
 }
 
 #endif
