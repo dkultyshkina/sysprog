@@ -132,7 +132,7 @@ int chat_client_connect(struct chat_client *client, const char *addr) {
     return CHAT_ERR_NO_ADDR;
   }
   *port_str++ = 0;
-  struct addrinfo hints = {.ai_family = AF_UNSPEC, .ai_socktype = SOCK_STREAM};
+  struct addrinfo hints = {.ai_family = AF_INET, .ai_socktype = SOCK_STREAM};
   struct addrinfo *result;
   if (getaddrinfo(host_copy, port_str, &hints, &result) != 0) {
     free(host_copy);

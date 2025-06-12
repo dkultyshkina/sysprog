@@ -297,8 +297,6 @@ int chat_server_update(struct chat_server *server, double timeout) {
   int epoll_timeout;
   if (timeout < 0) {
     epoll_timeout = -1;
-  } else if (timeout == 0) {
-    epoll_timeout = 10;
   } else {
     epoll_timeout = (int)(timeout * 1000);
   }
