@@ -310,7 +310,10 @@ int thread_task_timed_join(struct thread_task *task, double timeout,
   clock_gettime(CLOCK_REALTIME, &ts);
   ts.tv_sec += (time_t)timeout;
   ts.tv_nsec += (long)((timeout - (time_t)timeout) * 1e9);
-
+  if (ts.tv_nsec >= 1e9) {
+    ts.tv_sec += ts.tv_nsec / 1e9;
+    ts.tv_nsec %= 1000000000;
+  }
   pthread_mutex_lock(&task->mutex);
 
   int wait = 0;
@@ -351,12 +354,10 @@ int thread_task_delete(struct thread_task *task) {
 
 #if NEED_DETACH
 
-int
-thread_task_detach(struct thread_task *task)
-{
-	/* IMPLEMENT THIS FUNCTION */
-	(void)task;
-	return TPOOL_ERR_NOT_IMPLEMENTED;
+int thread_task_detach(struct thread_task *task) {
+  /* IMPLEMENT THIS FUNCTION */
+  (void)task;
+  return TPOOL_ERR_NOT_IMPLEMENTED;
 }
 
 #endif

@@ -166,4 +166,3 @@ int thread_task_delete(struct thread_task *task);
 int thread_task_detach(struct thread_task *task);
 
 #endif
-
