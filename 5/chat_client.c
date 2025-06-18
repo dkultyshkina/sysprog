@@ -33,19 +33,10 @@ bool is_empty_client_message(const char *str) {
 
 static bool update_client_events(struct client_data *c_data,
                                  uint32_t new_events) {
-  new_events |= EPOLLET;
-  if (c_data->current_events == new_events) {
-    return true;
-  }
+  new_events |= EPOLLET | EPOLLRDHUP;
   struct epoll_event ev;
   ev.events = new_events;
   ev.data.ptr = c_data;
-  if (epoll_ctl(c_data->client->epoll_fd, EPOLL_CTL_DEL, c_data->fd, &ev) ==
-          -1 &&
-      errno != ENOENT) {
-    c_data->client->is_closed = true;
-    return false;
-  }
   if (epoll_ctl(c_data->client->epoll_fd, EPOLL_CTL_ADD, c_data->fd, &ev) ==
       0) {
     c_data->current_events = new_events;
@@ -54,8 +45,6 @@ static bool update_client_events(struct client_data *c_data,
     c_data->client->is_closed = true;
     return false;
   }
-  c_data->client->is_closed = true;
-  return false;
 }
 
 struct chat_client *chat_client_new(const char *name) {
@@ -99,8 +88,9 @@ void chat_client_delete(struct chat_client *client) {
   if (client == NULL) {
     return;
   }
-  if (client->epoll_fd >= 0 && client->socket >= 0) {
-    epoll_ctl(client->epoll_fd, EPOLL_CTL_DEL, client->socket, NULL);
+  if (client->c_data != NULL && client->c_data->fd != -1 &&
+      client->epoll_fd >= 0 && client->socket >= 0) {
+    epoll_ctl(client->epoll_fd, EPOLL_CTL_DEL, client->c_data->fd, NULL);
   }
   if (client->epoll_fd >= 0) {
     close(client->epoll_fd);
@@ -182,8 +172,7 @@ int chat_client_connect(struct chat_client *client, const char *addr) {
   client->c_data->fd = client->socket;
   client->c_data->client = client;
   client->c_data->current_events = 0;
-  if (update_client_events(client->c_data, EPOLLIN | EPOLLOUT | EPOLLET |
-                                               EPOLLRDHUP) == false) {
+  if (update_client_events(client->c_data, EPOLLIN | EPOLLOUT) == false) {
     free(client->c_data);
     close(client->epoll_fd);
     close(client->socket);
@@ -202,7 +191,6 @@ struct chat_message *chat_client_pop_next(struct chat_client *client) {
   struct chat_message msg = client->in_msg[0];
   memmove(client->in_msg, client->in_msg + 1,
           (client->msg_size - 1) * sizeof(*client->in_msg));
-
   client->msg_size--;
   struct chat_message *result = malloc(sizeof(struct chat_message));
   if (result == NULL) {
@@ -214,66 +202,114 @@ struct chat_message *chat_client_pop_next(struct chat_client *client) {
   return result;
 }
 
-void get_client_in_data(struct chat_client *client, const char *data,
-                        size_t size) {
-  if (client == NULL || data == NULL || size == 0) {
-    return;
-  }
-  if (client->partial_size + size + 1 > client->partial_capacity) {
-    size_t new_capacity = (client->partial_size + size + 1) * 2;
-    char *new = realloc(client->partial_buffer, new_capacity);
-    if (new == NULL) {
-      client->is_closed = true;
-      return;
-    }
-    client->partial_buffer = new;
-    client->partial_capacity = new_capacity;
-  }
-  memcpy(client->partial_buffer + client->partial_size, data, size);
-  client->partial_size = client->partial_size + size;
-  client->partial_buffer[client->partial_size] = '\0';
-  char *start = client->partial_buffer;
-  char *end;
-  while (
-      (end = memchr(start, '\n',
-                    client->partial_size - (start - client->partial_buffer)))) {
-    size_t msg_len = end - start;
-    char *msg = malloc(msg_len + 1);
-    if (msg == NULL) {
-      client->is_closed = true;
-      break;
-    }
-    memcpy(msg, start, msg_len);
-    msg[msg_len] = '\0';
-    trim_client_message(msg);
-    if (!is_empty_client_message(msg)) {
-      if (client->msg_size == client->msg_capacity) {
-        client->msg_capacity *= 2;
-        struct chat_message *new_in_msg = realloc(
-            client->in_msg, client->msg_capacity * sizeof(struct chat_message));
-        if (new_in_msg == NULL) {
+static void get_client_in_data(struct chat_client *client) {
+  char buffer[1024];
+  ssize_t received;
+  while (true) {
+    received = recv(client->socket, buffer, sizeof(buffer), 0);
+    if (received > 0) {
+      if (client->partial_size > SIZE_MAX - received) {
+        client->is_closed = true;
+        return;
+      }
+      size_t new_size = client->partial_size + received;
+      if (new_size + 1 > client->partial_capacity) {
+        size_t new_capacity = client->partial_capacity * 2;
+        if (new_capacity == 0)
+          new_capacity = 1024;
+        if (new_capacity < new_size + 1) {
+          new_capacity = new_size + 1;
+          if (new_capacity < client->partial_capacity) {
+            client->is_closed = true;
+            return;
+          }
+        }
+        char *new_buffer = realloc(client->partial_buffer, new_capacity);
+        if (new_buffer == NULL) {
           client->is_closed = true;
-          free(msg);
+          return;
+        }
+        client->partial_buffer = new_buffer;
+        client->partial_capacity = new_capacity;
+      }
+      memcpy(client->partial_buffer + client->partial_size, buffer, received);
+      client->partial_size = new_size;
+      client->partial_buffer[client->partial_size] = '\0';
+      char *start = client->partial_buffer;
+      char *end;
+      while ((end = memchr(start, '\n',
+                           client->partial_size -
+                               (start - client->partial_buffer)))) {
+        size_t msg_len = end - start;
+        char *msg = malloc(msg_len + 1);
+        if (msg == NULL) {
+          client->is_closed = true;
           break;
         }
-        client->in_msg = new_in_msg;
+        memcpy(msg, start, msg_len);
+        msg[msg_len] = '\0';
+        trim_client_message(msg);
+        if (!is_empty_client_message(msg)) {
+          if (client->msg_size == client->msg_capacity) {
+            client->msg_capacity *= 2;
+            struct chat_message *new_in_msg =
+                realloc(client->in_msg,
+                        client->msg_capacity * sizeof(struct chat_message));
+            if (new_in_msg == NULL) {
+              client->is_closed = true;
+              free(msg);
+              break;
+            }
+            client->in_msg = new_in_msg;
+          }
+          client->in_msg[client->msg_size].data = msg;
+          client->in_msg[client->msg_size].size = strlen(msg);
+          client->msg_size++;
+        } else {
+          free(msg);
+        }
+        start = end + 1;
       }
-      client->in_msg[client->msg_size].data = msg;
-      client->in_msg[client->msg_size].size = strlen(msg);
-      client->msg_size++;
-    } else {
-      free(msg);
+      size_t remaining =
+          client->partial_size - (start - client->partial_buffer);
+      if (remaining > 0 && start != client->partial_buffer) {
+        memmove(client->partial_buffer, start, remaining);
+      } else if (remaining == 0) {
+        client->partial_buffer[0] = '\0';
+      }
+      client->partial_size = remaining;
+      client->partial_buffer[client->partial_size] = '\0';
+    } else if (received == 0) {
+      client->is_closed = true;
+      return;
+    } else if (received == -1) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        break;
+      } else {
+        client->is_closed = true;
+        return;
+      }
     }
-    start = end + 1;
   }
-  size_t remaining = client->partial_size - (start - client->partial_buffer);
-  if (remaining > 0 && start != client->partial_buffer) {
-    memmove(client->partial_buffer, start, remaining);
-  } else if (remaining == 0) {
-    client->partial_buffer[0] = '\0';
+}
+
+static void send_data(struct chat_client *client) {
+  while (client->out_size > 0) {
+    ssize_t sent_bytes = send(client->socket, client->out_buffer,
+                              client->out_size, MSG_NOSIGNAL);
+    if (sent_bytes > 0) {
+      memmove(client->out_buffer, client->out_buffer + sent_bytes,
+              client->out_size - sent_bytes);
+      client->out_size -= sent_bytes;
+    } else if (sent_bytes == -1) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        break;
+      } else {
+        client->is_closed = true;
+        return;
+      }
+    }
   }
-  client->partial_size = remaining;
-  client->partial_buffer[client->partial_size] = '\0';
 }
 
 int chat_client_update(struct chat_client *client, double timeout) {
@@ -295,48 +331,38 @@ int chat_client_update(struct chat_client *client, double timeout) {
   struct epoll_event events[1];
   int number = epoll_wait(client->epoll_fd, events, 1, epoll_timeout);
   if (number == 0) {
+    if (client->out_size > 0) {
+      send_data(client);
+      if (client->is_closed) {
+        return CHAT_ERR_SYS;
+      }
+    }
     return CHAT_ERR_TIMEOUT;
   }
   if (number == -1) {
-    if (errno == EINTR)
+    if (errno == EINTR) {
       return CHAT_ERR_TIMEOUT;
+    }
     client->is_closed = true;
     return CHAT_ERR_SYS;
   }
   struct client_data *c_data = (struct client_data *)events[0].data.ptr;
+  if (c_data->fd != client->socket) {
+    return CHAT_ERR_SYS;
+  }
   if (events[0].events & (EPOLLERR | EPOLLHUP | EPOLLRDHUP)) {
     client->is_closed = true;
     return CHAT_ERR_SYS;
   }
   if (events[0].events & EPOLLOUT) {
-    if (client->out_size > 0) {
-      ssize_t sent = send(client->socket, client->out_buffer, client->out_size,
-                          MSG_NOSIGNAL);
-      if (sent > 0) {
-        memmove(client->out_buffer, client->out_buffer + sent,
-                client->out_size - sent);
-        client->out_size -= sent;
-
-        if (client->out_size == 0) {
-          update_client_events(c_data, EPOLLIN | EPOLLET | EPOLLRDHUP);
-        }
-      } else if (sent == -1 && errno != EAGAIN && errno != EWOULDBLOCK) {
-        client->is_closed = true;
-        return CHAT_ERR_SYS;
-      }
+    send_data(client);
+    if (client->is_closed) {
+      return CHAT_ERR_SYS;
     }
   }
   if (events[0].events & EPOLLIN) {
-    char buffer[1024];
-    ssize_t received;
-    while ((received = recv(client->socket, buffer, sizeof(buffer), 0)) > 0) {
-      get_client_in_data(client, buffer, received);
-      if (client->is_closed == true)
-        break;
-    }
-    if ((received == 0) ||
-        (received == -1 && errno != EAGAIN && errno != EWOULDBLOCK)) {
-      client->is_closed = true;
+    get_client_in_data(client);
+    if (client->is_closed) {
       return CHAT_ERR_SYS;
     }
   }
@@ -386,9 +412,5 @@ int chat_client_feed(struct chat_client *client, const char *msg,
   }
   memcpy(client->out_buffer + client->out_size, msg, msg_size);
   client->out_size += msg_size;
-  if (update_client_events(client->c_data, EPOLLIN | EPOLLOUT | EPOLLET |
-                                               EPOLLRDHUP) == false) {
-    return CHAT_ERR_SYS;
-  }
   return 0;
 }

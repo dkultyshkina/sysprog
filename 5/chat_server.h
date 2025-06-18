@@ -38,8 +38,10 @@ struct chat_server {
   int socket;
   int epoll_fd;
   struct peer_data *listener_pd;
-  struct chat_peer *peers[1024];
+  struct chat_peer **peers;
   size_t peer_count;
+  size_t peer_capacity;
+
   struct chat_message *messages;
   size_t msg_count;
   size_t msg_capacity;
